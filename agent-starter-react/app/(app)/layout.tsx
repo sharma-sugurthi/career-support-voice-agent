@@ -31,11 +31,6 @@ export default async function Layout({ children }: LayoutProps) {
           Powered by RGUKT RK Valley | Nuzvid | Ongole | Srikakulam
         </span>
       </footer>
-      <footer className="fixed bottom-0 left-0 z-50 hidden w-full justify-center p-4 md:flex">
-        <span className="text-foreground font-mono text-xs font-bold tracking-wider uppercase">
-          Powered by RGUKT RK Valley | Nuzvid | Ongole | Srikakulam
-        </span>
-      </footer>
 
 
       {children}
