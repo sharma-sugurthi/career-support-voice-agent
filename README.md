@@ -1,156 +1,121 @@
 # RGUKT Career Support Voice Agent
 
-A real-time voice AI system built for RGUKT (Rajiv Gandhi University of Knowledge Technologies). Students speak into a browser, the agent transcribes, reasons, and responds - end-to-end latency under two seconds on a decent connection.
+This is a voice AI project I built during my final year at RGUKT (Rajiv Gandhi University of Knowledge Technologies). Students open a browser, click start, and talk to an AI that helps with career questions - resumes, placements, interview prep, higher studies, that sort of thing. The agent listens, thinks, and talks back. End to end it takes under two seconds on a normal connection.
 
-The system is split into two independent services that communicate through a LiveKit room:
+Two separate services work together through a LiveKit room. The browser handles the mic and speaker. The Python agent handles everything else.
 
 ```
-Browser (Next.js)  ──WebRTC──  LiveKit Cloud  ──── Python Agent
-                                                       ├─ STT: AssemblyAI
-                                                       ├─ LLM: Groq (compound-mini)
-                                                       ├─ TTS: Cartesia sonic-2
-                                                       ├─ VAD: Silero
-                                                       └─ Turn detection: Multilingual ONNX
+Browser (Next.js) --- LiveKit Cloud --- Python Agent
+                                            STT: AssemblyAI
+                                            LLM: Groq (compound-mini)
+                                            TTS: Cartesia sonic-2
+                                            VAD: Silero
+                                            Turn detection: Multilingual ONNX
 ```
 
----
-
-## Structure
+## What's in this repo
 
 ```
 career-support-voice-agent/
-├── livekit-voice-agent/      # Python agent (uv)
-│   ├── agent.py              # Entry point - all agent logic lives here
-│   ├── pyproject.toml        # Dependencies
-│   ├── uv.lock               # Locked dependency graph
-│   └── .env.example          # Template for required secrets
-├── agent-starter-react/      # Next.js 15 frontend (pnpm)
-│   ├── app/                  # App router pages and API routes
-│   ├── components/           # React components (livekit + app-level)
-│   ├── lib/utils.ts          # Shared utilities
-│   └── .env.example          # Template for required secrets
-├── tests/
-│   └── agent/
-│       └── test_agent.py     # Pytest suite - runs without live credentials
-└── .gitignore
+    livekit-voice-agent/      Python agent
+        agent.py              everything starts here
+        pyproject.toml
+        uv.lock
+        .env.example
+    agent-starter-react/      Next.js 15 frontend
+        app/
+        components/
+        .env.example
+    tests/
+        agent/
+            test_agent.py     16 tests, no live credentials needed
+    .gitignore
+    README.md
 ```
 
----
+## What you need installed
 
-## Prerequisites
+- Python 3.10 or newer
+- [uv](https://astral.sh/uv) for Python package management (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+- Node.js 18 or newer
+- pnpm (`npm install -g pnpm`)
 
-| Tool | Version | Install |
-|------|---------|---------|
-| Python | ≥ 3.10 | System package or pyenv |
-| uv | any | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
-| Node.js | ≥ 18 | System package or nvm |
-| pnpm | ≥ 9 | `npm install -g pnpm` |
+## API keys you need
 
----
+Four services, all free tiers are enough for development and demos.
 
-## API Keys
+- **LiveKit Cloud** at https://cloud.livekit.io - create a project, go to Settings, grab the URL, API key, and secret
+- **AssemblyAI** at https://www.assemblyai.com - just sign up and copy the API key from the dashboard
+- **Groq** at https://console.groq.com - no billing required, just create an API key
+- **Cartesia** at https://play.cartesia.ai - sign up and get an API key from your account
 
-You need accounts at four services. All have free tiers that cover development and demo loads:
+## Setting up
 
-| Service | Purpose | Where to get it |
-|---------|---------|-----------------|
-| [LiveKit Cloud](https://cloud.livekit.io) | WebRTC room infrastructure | Project → Settings → Keys |
-| [AssemblyAI](https://www.assemblyai.com) | Speech-to-text (streaming) | Dashboard → API Keys |
-| [Groq](https://console.groq.com) | LLM inference (free, no billing) | API Keys → Create Key |
-| [Cartesia](https://play.cartesia.ai) | Text-to-speech | Account → API Keys |
-
----
-
-## Setup
-
-### Python Agent
+Start with the Python agent:
 
 ```bash
 cd livekit-voice-agent
-
-# Install dependencies into an isolated venv
 uv sync
-
-# Download the turn-detector ONNX model (~400MB, one-time)
 python agent.py download-files
-
-# Copy and fill in credentials
 cp .env.example .env.local
-# edit .env.local with your keys
+# fill in your keys in .env.local
 ```
 
-### Frontend
+Then the frontend:
 
 ```bash
 cd agent-starter-react
-
-# Install dependencies
 pnpm install
-
-# Copy and fill in credentials
 cp .env.example .env.local
-# edit .env.local - only three LiveKit keys needed here
+# only the three LiveKit keys go here
 ```
 
----
+## Running it
 
-## Running
-
-Start both services in separate terminals. Order doesn't matter.
+Open two terminals.
 
 ```bash
-# Terminal 1 - Python agent (hot-reloads on file changes)
+# terminal 1
 cd livekit-voice-agent
 source .venv/bin/activate
 python agent.py dev
 ```
 
 ```bash
-# Terminal 2 - Next.js frontend
+# terminal 2
 cd agent-starter-react
 pnpm dev
 ```
 
-Open `http://localhost:3000`, click **Start call**, and speak.
+Go to http://localhost:3000, hit Start call, and talk.
 
----
-
-## Tests
+## Running the tests
 
 ```bash
-# From the project root, with the agent venv active
 source livekit-voice-agent/.venv/bin/activate
 pytest tests/ -v
 ```
 
-The test suite covers environment setup, agent imports, class hierarchy, and dependency declarations. It does not require live API credentials or a running LiveKit room.
+Tests cover env setup, imports, the Assistant class, and pyproject.toml. They don't need any live API keys to run.
 
----
+## Why these specific tools
 
-## Architecture Notes
+**Groq for the LLM** - their LPU chips are genuinely faster than GPU-based inference at this price point. For voice, if your LLM is slow the whole thing feels broken even if STT and TTS are fast. `groq/compound-mini` is free and has enough quota for a demo.
 
-**Why Groq instead of OpenAI?**  
-Groq's LPU hardware delivers inference latency that OpenAI can't match at comparable price points. For voice, every 100ms matters - a slow LLM makes the whole pipeline feel broken regardless of how fast your STT and TTS are. `groq/compound-mini` runs on-demand with a generous free tier.
+**AssemblyAI for speech to text** - the streaming model handles Indian English better than most Whisper-based options I tested. It also sends partial transcripts, so the agent can start thinking before you finish speaking.
 
-**Why AssemblyAI for STT?**  
-The `universal-streaming` model handles Indian English accent variance better than Whisper-based alternatives in benchmarks that matter here. LiveKit's AssemblyAI plugin streams partial transcripts, so the LLM starts forming a response before the user finishes speaking.
+**Cartesia for text to speech** - `sonic-2` generates audio faster than real-time, which means the agent starts speaking within about 200ms of the first token from the LLM. ElevenLabs sounds slightly better but the free tier latency is noticeably worse.
 
-**Why Cartesia for TTS?**  
-`sonic-2` generates audio faster than real-time on their servers, which means the agent can begin speaking within ~200ms of LLM first-token. The alternative (ElevenLabs) has higher quality but meaningfully higher latency at the free tier.
+**The subprocess thing** - LiveKit agents 1.3.x runs the LLM in a separate OS process via IPC. This means if you create an OpenAI client object in the main process and try to pass it to the session, it gets dropped because Python can't serialize it across the process boundary. The fix is to create the Groq client inside `my_agent()` so it gets created fresh in the right process.
 
-**Why the inference subprocess architecture?**  
-LiveKit agents 1.3.x runs LLM, VAD, and turn-detector in separate OS processes via IPC. VAD and turn-detection run in the inference subprocess (shared across calls), while the job subprocess handles each individual session. The practical implication is that objects created in the main process - like an `AsyncOpenAI` client - cannot be pickled across the IPC boundary. That is why `OPENAI_BASE_URL` and the Groq client are configured inside `my_agent()` rather than at module level.
+## Known issues
 
----
+Groq's free tier has a token per minute limit on compound-mini. In normal conversation you won't hit it. If you're testing rapidly by connecting and disconnecting many times in a row, you'll get a rate limit error and the call will fail. Just wait a minute and try again.
 
-## Limitations
+This setup runs one session at a time. If you need more concurrent users, run multiple agent processes.
 
-- **Rate limits**: Groq's free tier caps at ~8000 tokens/minute for compound-mini. Normal conversations stay well under this; back-to-back rapid testing will hit it. The agent recovers automatically on the next call.
-- **Hardware**: The ONNX turn-detector model runs on CPU. An i3 handles it fine. Do not attempt to run local LLM inference on this hardware.
-- **Concurrency**: This setup handles one concurrent session. LiveKit Cloud dispatches jobs to available workers; if you need multiple simultaneous users, run multiple agent processes.
-
----
+The ONNX turn-detector model runs on CPU. Works fine on an i3. Don't try running a local LLM on the same machine, it won't work without a GPU.
 
 ## License
 
-MIT
+Apache 2.0
