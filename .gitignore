@@ -71,3 +71,9 @@ logs/
 .vercel
 
 # ── Project-specific ──────────────────────────────────────────────────────────
+
+# Generated launcher (absolute paths, machine-specific)
+Start Career Coach.desktop
+
+# Per-user memory database (local, private)
+livekit-voice-agent/data/

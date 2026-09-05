@@ -14,4 +14,8 @@ dependencies = [
     # livekit-plugins-anthropic hands the SDK an httpx client; anthropic 1.x
     # moved to httpx2 and rejects it
     "anthropic<1",
+    # research tools: keyless web search, page fetching, article extraction
+    "ddgs>=9.0",
+    "httpx>=0.27",
+    "trafilatura>=2.0",
 ]
