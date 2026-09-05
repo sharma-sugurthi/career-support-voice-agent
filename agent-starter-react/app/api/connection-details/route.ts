@@ -33,9 +33,16 @@ export async function POST(req: Request) {
     const body = await req.json();
     const agentName: string = body?.room_config?.agents?.[0]?.agent_name;
 
+    // Stable per-browser identity (sent by the client) enables the agent to
+    // remember returning users. Falls back to a random identity when absent.
+    const requestedIdentity: unknown = body?.participant_identity;
+    const participantIdentity =
+      typeof requestedIdentity === 'string' && /^user_[A-Za-z0-9-]{8,64}$/.test(requestedIdentity)
+        ? requestedIdentity
+        : `voice_assistant_user_${Math.floor(Math.random() * 10_000)}`;
+
     // Generate participant token
     const participantName = 'user';
-    const participantIdentity = `voice_assistant_user_${Math.floor(Math.random() * 10_000)}`;
     const roomName = `voice_assistant_room_${Math.floor(Math.random() * 10_000)}`;
 
     const participantToken = await createParticipantToken(

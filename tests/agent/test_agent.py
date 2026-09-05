@@ -132,59 +132,39 @@ class TestAgentModule:
 
 
 # ---------------------------------------------------------------------------
-# Assistant Class
+# The coach agent (entry agent of the team; deeper team tests in test_team.py)
 # ---------------------------------------------------------------------------
 
-class TestAssistantClass:
-    def _get_assistant_class(self):
-        with (
-            patch("dotenv.load_dotenv"),
-            patch("livekit.agents.AgentServer", return_value=MagicMock()),
-        ):
-            import importlib
-            import agent
-            importlib.reload(agent)
-            return agent.Assistant
+class TestCoachAgent:
+    def _get_coach_class(self):
+        from agents_team import CareerCoach
+        return CareerCoach
 
-    def test_assistant_is_agent_subclass(self):
+    def test_coach_is_agent_subclass(self):
         from livekit.agents import Agent
-        Assistant = self._get_assistant_class()
-        assert issubclass(Assistant, Agent), (
-            "Assistant must subclass livekit.agents.Agent"
-        )
+        assert issubclass(self._get_coach_class(), Agent)
 
-    def test_assistant_has_instructions(self):
-        Assistant = self._get_assistant_class()
-        # Instantiate with mocked parent __init__
-        with patch("livekit.agents.Agent.__init__", lambda self, **kw: None):
-            instance = Assistant.__new__(Assistant)
-            # Verify the class itself calls super().__init__ with instructions
-            # by checking the source contains the keyword
-            import inspect
-            src = inspect.getsource(Assistant.__init__)
-            assert "instructions" in src
-
-    def test_assistant_instructions_are_general(self):
+    def test_coach_instructions_are_general(self):
         """The prompt must serve any user, not one institute."""
-        Assistant = self._get_assistant_class()
-        import inspect
-        src = inspect.getsource(Assistant.__init__)
-        assert "career" in src.lower(), (
+        instructions = self._get_coach_class()().instructions
+        assert "career" in instructions.lower(), (
             "Agent instructions must describe career coaching"
         )
-        assert "RGUKT" not in src, (
+        assert "RGUKT" not in instructions, (
             "Agent instructions still mention RGUKT - the project pivoted to "
             "a general-purpose career agent"
         )
 
-    def test_assistant_instructions_no_markdown(self):
+    def test_coach_instructions_no_markdown(self):
         """Voice agents should never use markdown formatting in their prompts."""
-        Assistant = self._get_assistant_class()
-        import inspect
-        src = inspect.getsource(Assistant.__init__)
-        assert "asterisks" in src.lower() or "formatting" in src.lower(), (
+        instructions = self._get_coach_class()().instructions
+        assert "asterisks" in instructions.lower() or "formatting" in instructions.lower(), (
             "Instructions should explicitly prohibit markdown/formatting for voice output"
         )
+
+    def test_memory_context_lands_in_instructions(self):
+        coach = self._get_coach_class()(memory_context="Known: target role is data analyst")
+        assert "data analyst" in coach.instructions
 
 
 # ---------------------------------------------------------------------------

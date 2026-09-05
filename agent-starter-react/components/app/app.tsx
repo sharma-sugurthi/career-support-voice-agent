@@ -13,6 +13,7 @@ import { ViewController } from '@/components/app/view-controller';
 import { Toaster } from '@/components/livekit/toaster';
 import { useAgentErrors } from '@/hooks/useAgentErrors';
 import { useDebugMode } from '@/hooks/useDebug';
+import { getStableUserId } from '@/lib/user-id';
 import { getSandboxTokenSource } from '@/lib/utils';
 
 const IN_DEVELOPMENT = process.env.NODE_ENV !== 'production';
@@ -35,10 +36,16 @@ export function App({ appConfig }: AppProps) {
       : TokenSource.endpoint('/api/connection-details');
   }, [appConfig]);
 
-  const session = useSession(
-    tokenSource,
-    appConfig.agentName ? { agentName: appConfig.agentName } : undefined
-  );
+  const sessionOptions = useMemo(() => {
+    // Stable per-browser identity so the agent remembers returning users
+    const participantIdentity = getStableUserId();
+    return {
+      ...(participantIdentity ? { participantIdentity } : {}),
+      ...(appConfig.agentName ? { agentName: appConfig.agentName } : {}),
+    };
+  }, [appConfig.agentName]);
+
+  const session = useSession(tokenSource, sessionOptions);
 
   return (
     <SessionProvider session={session}>

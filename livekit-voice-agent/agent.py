@@ -6,40 +6,38 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env.local")
 
 from livekit import agents, rtc
-from livekit.agents import AgentServer, AgentSession, Agent, room_io
+from livekit.agents import AgentServer, AgentSession, room_io
 from livekit.plugins import assemblyai, cartesia, noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
+from agents_team import CareerCoach, UserData
 from llm_providers import classify_llm_error, create_llm, SPOKEN_ERROR_MESSAGES
+from memory import MemoryStore
+from memory.summarizer import summarize_session
 
 logger = logging.getLogger("career-agent")
-
-
-class Assistant(Agent):
-    def __init__(self) -> None:
-        super().__init__(
-            instructions="""You are a voice AI career coach. You help anyone,
-            anywhere with their career - resume and portfolio building, job search
-            strategy, interview preparation, salary negotiation, career switches,
-            higher studies, freelancing, and skill development plans.
-            Ask one clarifying question when the user's goal is vague, then give
-            concrete, actionable advice tailored to their situation.
-            Keep every response to 1-2 sentences maximum. Voice responses must be brief.
-            Never use formatting, emojis, asterisks, bullet points, or special symbols.
-            You are warm, direct, and encouraging.""",
-        )
-
 
 server = AgentServer()
 
 
 @server.rtc_session()
 async def my_agent(ctx: agents.JobContext):
+    await ctx.connect()
+    participant = await ctx.wait_for_participant()
+    user_id = participant.identity or f"anon_{ctx.room.name}"
+
+    store = MemoryStore()
+    is_returning = store.touch_user(user_id)
+    memory_context = store.build_memory_context(user_id) if is_returning else ""
+
     # Create the LLM here (inside the subprocess) so env vars are available
     # and the client object isn't lost across the IPC process boundary.
+    llm = create_llm()
+
     session = AgentSession(
+        userdata=UserData(user_id=user_id, store=store),
         stt=assemblyai.STT(),
-        llm=create_llm(),
+        llm=llm,
         tts=cartesia.TTS(
             model="sonic-2",
             voice="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",
@@ -59,9 +57,23 @@ async def my_agent(ctx: agents.JobContext):
         if kind is not None:
             session.say(SPOKEN_ERROR_MESSAGES[kind], allow_interruptions=True)
 
+    async def save_memory() -> None:
+        # Runs when the session shuts down. Memory must never crash close.
+        try:
+            summary = await summarize_session(llm, session.history)
+            if summary:
+                store.add_session_summary(user_id, summary)
+            store.save_chat_snapshot(user_id, session.history.to_dict())
+            logger.info("memory saved for %s (summary: %s)", user_id, bool(summary))
+        except Exception:
+            logger.exception("failed to save session memory")
+
+    ctx.add_shutdown_callback(save_memory)
+
+    # The CareerCoach greets on_enter; specialists introduce themselves on handoff.
     await session.start(
         room=ctx.room,
-        agent=Assistant(),
+        agent=CareerCoach(memory_context=memory_context),
         room_options=room_io.RoomOptions(
             audio_input=room_io.AudioInputOptions(
                 noise_cancellation=lambda params: noise_cancellation.BVCTelephony()
@@ -69,10 +81,6 @@ async def my_agent(ctx: agents.JobContext):
                 else noise_cancellation.BVC(),
             ),
         ),
-    )
-
-    await session.generate_reply(
-        instructions="Greet the user warmly and offer career support assistance."
     )
 
 

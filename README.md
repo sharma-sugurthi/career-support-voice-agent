@@ -6,7 +6,9 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-ff69b4?logo=githubsponsors)](https://github.com/sponsors/sharma-sugurthi)
 
-An open-source, voice-first AI career coach. Open a browser, click start, and talk to an AI about resumes, interview prep, job search strategy, salary negotiation, career switches, higher studies, and skill development. It listens, thinks, and talks back in under two seconds on a normal connection.
+An open-source, voice-first AI career coach - actually a whole team of them. Open a browser, click start, and talk about resumes, mock interviews, LinkedIn, higher studies in India or abroad, acing one company or one exam (UPSC, SSC, banking, CAT, GATE), study schedules, and portfolio projects. It listens, thinks, talks back in under two seconds, and remembers you next time.
+
+Built for everyone, not just engineers: a UPSC aspirant, a marketer, a designer, and a CS student all get a coach that speaks their language.
 
 **Self-hosted by default.** Out of the box the agent runs on your own machine with a local LLM through Ollama - no LLM API key, no per-token cost, and your conversations never leave your hardware. If you prefer a hosted model, switch to Claude, GPT, Gemini, or Groq with one env var.
 
@@ -24,6 +26,39 @@ Browser (Next.js) --- LiveKit --- Python Agent
                                       VAD:  Silero
                                       Turn detection: Multilingual ONNX
 ```
+
+## Meet the team
+
+One conversation, eight coaches. The main coach understands what you need and hands you to the right specialist mid-call - it feels like one continuous conversation.
+
+```
+                     ┌─ ResumeCoach          resume/CV/portfolio, any field
+                     ├─ InterviewCoach       mock interviews + honest scored verdicts
+CareerCoach ─────────├─ LinkedInCoach        profile building from your own text
+ (routes, plans)     ├─ HigherStudiesPlanner India + abroad, asks your budget FIRST
+                     ├─ TargetPrep           ace one company or one exam (UPSC/SSC/CAT/GATE)
+                     ├─ StudyPlanner         week-by-week schedules that fit your life
+                     └─ ProjectMentor        proof-of-work + live hackathon listings
+```
+
+Every specialist shares your memory and can research with real tools: keyless web search, page reading (robots.txt respected), currency conversion at official ECB rates, and exact budget math done in Python, never in the model's head.
+
+## It remembers you
+
+Close the tab, come back next week, and the coach picks up where you left off. Everything lives in one local SQLite file (`livekit-voice-agent/data/career.db`) created automatically - **nothing is hosted anywhere**, no database to set up, no account to create. Your identity is an anonymous ID in your browser; your career data never leaves your machine (delete that one file to wipe it). At the end of each session the agent writes itself a short memory note; during conversation it saves durable facts you tell it, each tagged with where it came from.
+
+## How it avoids making things up
+
+Honest framing: no AI system can guarantee zero hallucinations. This project is engineered to make them rare, and caught when they matter:
+
+1. **Grounding contract in every prompt**: any fact with a number or date attached - fees, deadlines, cutoffs, salaries - must come from a tool result in the conversation, or the agent says "let me look that up" / "I don't know". Saying "I don't know" is explicitly rewarded.
+2. **Spoken citations**: facts come with their source named out loud ("according to the official GATE website...").
+3. **Deterministic math**: currency and budget totals are computed in Python tools.
+4. **Provenance in memory**: every remembered fact records whether the user said it, the web sourced it, or it was inferred - and inferred facts are never presented back as truth.
+5. **A verification gate on plans**: before any plan containing money or dates is saved, a second LLM pass checks each claim against the tool evidence actually gathered in the conversation. Unsupported claims block the save and are named, so the agent re-researches instead of persisting fiction.
+6. **Grounding evals**: `RUN_EVALS=1 uv run --with pytest pytest ../tests/evals/ -v` tests the real configured model against the contract (must not invent a fee, must admit uncertainty, verifier must catch a fabricated number). Run it after changing prompts or models.
+
+Small local models hallucinate more than big ones. For fact-heavy work (higher studies costs, target research), prefer at least a 14B model or a hosted provider - the eval suite tells you where your model stands.
 
 ## Choose your LLM
 
@@ -69,17 +104,43 @@ If a hosted provider fails, the agent tells you out loud instead of going silent
 
 ```
 career-support-voice-agent/
-    livekit-voice-agent/      Python agent
-        agent.py              session wiring, error handling
-        llm_providers.py      provider selection + failure classification
-        pyproject.toml
-        .env.example
-    agent-starter-react/      Next.js 15 frontend
-    tests/agent/              runs without any live credentials
-    .github/workflows/ci.yml  tests on every push and PR
+    setup.sh / setup.bat        one-time setup for non-technical users
+    start.sh / start.bat        one-step start (agent + web app + browser)
+    livekit-voice-agent/        Python agent
+        agent.py                session wiring, memory hooks, error speech
+        llm_providers.py        LLM provider selection + failure classification
+        agents_team/            the coach + seven specialists
+        prompts/                composed instructions (base + grounding + specialty)
+        tools/                  search, page reading, finance, claim verifier
+        memory/                 SQLite store + session summarizer
+    agent-starter-react/        Next.js 15 frontend
+    tests/                      96 tests, no live credentials needed
+        evals/                  opt-in grounding evals against your real LLM
+    .github/workflows/ci.yml    tests on every push and PR
 ```
 
-## Setup
+## Easy setup (for everyone)
+
+You don't need to be a programmer. Set up once, then start with one step every time.
+
+**One-time setup:**
+
+1. Install [Node.js](https://nodejs.org) (LTS version) and [Ollama](https://ollama.com/download) - both are normal installers, click Next until done.
+2. Download this project (green "Code" button above → Download ZIP → unzip), or `git clone` it.
+3. Open a terminal in the project folder and run:
+   - Mac/Linux: `./setup.sh`
+   - Windows: double-click `setup.bat`
+4. The setup walks you through creating 3 free accounts (LiveKit, AssemblyAI, Cartesia) and pastes in your keys. The AI brain itself runs on your own computer - no AI key, no AI bill.
+
+**Starting it (every time after):**
+
+- Mac: double-click `Start Career Coach.command` (or run `./start.sh`)
+- Windows: double-click `start.bat`
+- Linux: run `./start.sh`
+
+Your browser opens at http://localhost:3000 - hit Start call and talk. Press Ctrl+C in the terminal (or close the windows on Windows) to stop.
+
+## Manual setup (for developers)
 
 You need Python 3.10+, [uv](https://astral.sh/uv), Node.js 18+, and pnpm.
 
@@ -133,7 +194,7 @@ cd livekit-voice-agent
 uv run --with pytest pytest ../tests/ -v
 ```
 
-Tests cover env setup, imports, the Assistant class, LLM provider selection, and the credit-exhaustion error classification. No live API keys needed.
+Tests cover env setup, the agent team and its handoff graph, prompt composition, memory round-trips with provenance, tool allowlists, the claim verifier, LLM provider selection, and credit-exhaustion classification. No live API keys needed. The opt-in grounding evals (`RUN_EVALS=1`) additionally exercise your real configured LLM.
 
 ## Why these specific tools
 
