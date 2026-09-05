@@ -39,16 +39,38 @@ class TestFriendlyErrors:
         content = (ROOT / "start.sh").read_text()
         assert "setup.sh" in content, "start.sh must tell users to run setup.sh first"
 
-    def test_start_checks_all_required_keys(self):
+    def test_start_checks_livekit_config(self):
         content = (ROOT / "start.sh").read_text()
-        for key in (
-            "LIVEKIT_URL",
-            "LIVEKIT_API_KEY",
-            "LIVEKIT_API_SECRET",
-            "ASSEMBLYAI_API_KEY",
-            "CARTESIA_API_KEY",
-        ):
-            assert key in content, f"start.sh does not pre-check {key}"
+        for key in ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"):
+            assert key in content, f"start.sh does not handle {key}"
+
+    def test_start_does_not_require_speech_keys(self):
+        """Auto mode: missing AssemblyAI/Cartesia keys are VALID (local
+        fallback), so start.sh must not hard-fail on them."""
+        content = (ROOT / "start.sh").read_text()
+        assert 'check_key "ASSEMBLYAI_API_KEY"' not in content
+        assert 'check_key "CARTESIA_API_KEY"' not in content
+
+    def test_start_supports_local_livekit(self):
+        content = (ROOT / "start.sh").read_text()
+        assert "localhost" in content, "start.sh must recognize a local LIVEKIT_URL"
+        assert "bin/livekit-server" in content, "start.sh must launch the local server"
+        assert "--dev" in content
+
+    def test_start_shows_the_running_mode(self):
+        assert "show_mode.py" in (ROOT / "start.sh").read_text(), (
+            "start.sh should print which pieces run local vs cloud"
+        )
+
+    def test_setup_installs_local_livekit(self):
+        content = (ROOT / "setup.sh").read_text()
+        assert "livekit-server" in content
+        assert "ws://localhost:7880" in content
+        assert "devkey" in content
+
+    def test_windows_scripts_support_local_livekit(self):
+        assert "livekit-server.exe" in (ROOT / "start.bat").read_text()
+        assert "ws://localhost:7880" in (ROOT / "setup.bat").read_text()
 
     def test_error_messages_name_the_fix(self):
         content = (ROOT / "start.sh").read_text()

@@ -77,3 +77,9 @@ Start Career Coach.desktop
 
 # Per-user memory database (local, private)
 livekit-voice-agent/data/
+
+# Local voice models (piper voices, auto-downloaded)
+livekit-voice-agent/models/
+
+# Local LiveKit server binary (downloaded by setup)
+bin/

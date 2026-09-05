@@ -7,13 +7,15 @@ load_dotenv(Path(__file__).parent / ".env.local")
 
 from livekit import agents, rtc
 from livekit.agents import AgentServer, AgentSession, room_io
-from livekit.plugins import assemblyai, cartesia, noise_cancellation, silero
+from livekit.plugins import noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 from agents_team import CareerCoach, UserData
 from llm_providers import classify_llm_error, create_llm, SPOKEN_ERROR_MESSAGES
 from memory import MemoryStore
 from memory.summarizer import summarize_session
+from stt_providers import create_stt
+from tts_providers import create_tts
 
 logger = logging.getLogger("career-agent")
 
@@ -36,12 +38,9 @@ async def my_agent(ctx: agents.JobContext):
 
     session = AgentSession(
         userdata=UserData(user_id=user_id, store=store),
-        stt=assemblyai.STT(),
+        stt=create_stt(),
         llm=llm,
-        tts=cartesia.TTS(
-            model="sonic-2",
-            voice="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",
-        ),
+        tts=create_tts(),
         vad=silero.VAD.load(),
         turn_detection=MultilingualModel(),
     )
