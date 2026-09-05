@@ -10,7 +10,7 @@ An open-source, voice-first AI career coach - actually a whole team of them. Ope
 
 Built for everyone, not just engineers: a UPSC aspirant, a marketer, a designer, and a CS student all get a coach that speaks their language.
 
-**Self-hosted by default.** Out of the box the agent runs on your own machine with a local LLM through Ollama - no LLM API key, no per-token cost, and your conversations never leave your hardware. If you prefer a hosted model, switch to Claude, GPT, Gemini, or Groq with one env var.
+**Keys optional, always.** Every piece of the stack follows one rule: paste an API key and it automatically uses the best commercial service; leave it empty and that piece automatically runs on your own computer, free forever. No keys at all? The whole thing - brain (Ollama), ears (Whisper), voice (Piper), even the LiveKit connection (local server) - runs on one laptop with zero accounts.
 
 > This project started as a career support agent for my university, RGUKT. It's now a general-purpose voice career coach that anyone can run, extend, and deploy. If it helps you, a ⭐ star keeps it going, and [sponsoring](https://github.com/sponsors/sharma-sugurthi) helps me spend more time on it.
 
@@ -19,13 +19,15 @@ Built for everyone, not just engineers: a UPSC aspirant, a marketer, a designer,
 Two services talk to each other through a LiveKit room. The browser handles the mic and speaker; the Python agent handles everything else.
 
 ```
-Browser (Next.js) --- LiveKit --- Python Agent
-                                      STT:  AssemblyAI streaming
-                                      LLM:  YOUR CHOICE (self-hosted default)
-                                      TTS:  Cartesia sonic-2
-                                      VAD:  Silero
-                                      Turn detection: Multilingual ONNX
+Browser (Next.js) --- LiveKit (cloud or local) --- Python Agent
+                                      STT:  AssemblyAI, or local Whisper
+                                      LLM:  your key's provider, or local Ollama
+                                      TTS:  Cartesia, or local Piper
+                                      VAD:  Silero (always local)
+                                      Turn detection: Multilingual ONNX (always local)
 ```
+
+Which side of each "or" runs is decided automatically by whether its key exists - `./start.sh` prints the chosen mode every time.
 
 ## Meet the team
 
@@ -93,6 +95,21 @@ That's it - the agent's default config finds it at `http://localhost:11434/v1`. 
 
 Voice feels broken when the LLM is slow, so prefer the largest model that still streams tokens quickly on your machine. For production-grade serving, run [vLLM](https://docs.vllm.ai) and use `LLM_PROVIDER=openai-compatible` with `LLM_BASE_URL=http://your-server:8000/v1`.
 
+### Keys upgrade you, no keys costs you nothing
+
+There is nothing to configure. Every piece checks for its key and decides by itself:
+
+| Piece | Key present → | Key absent → |
+|---|---|---|
+| Brain (LLM) | `ANTHROPIC_API_KEY` → Claude, `OPENAI_API_KEY` → GPT, `GOOGLE_API_KEY` → Gemini, `GROQ_API_KEY` → Groq (in that priority) | local Ollama |
+| Ears (STT) | `ASSEMBLYAI_API_KEY` → AssemblyAI streaming | local Whisper |
+| Voice (TTS) | `CARTESIA_API_KEY` → Cartesia sonic-2 | local Piper ([voice samples](https://rhasspy.github.io/piper-samples/)) |
+| Connection | LiveKit Cloud keys → their free tier | a local `livekit-server` that `setup.sh` downloads - no account at all |
+
+Paste a key into `livekit-voice-agent/.env.local` any time and that one piece upgrades on next start; delete it and the piece falls back to local. Force a specific provider with `LLM_PROVIDER` / `STT_PROVIDER` / `TTS_PROVIDER` when you want to override the automatics (both speech pieces also accept `openai-compatible` with a `*_BASE_URL` for local servers like Speaches or Kokoro).
+
+Honest tradeoffs of all-local: Piper sounds more robotic than Cartesia, local Whisper adds a beat of pause after you stop talking (per-utterance, not streaming - `STT_MODEL=base` on weak machines, `medium` with a GPU), and the local LiveKit server is for using it yourself on your own machine or network. The moment you want to put your agent on the internet for other people, that's what the LiveKit Cloud free tier is for.
+
 ### When credits run out
 
 If a hosted provider fails, the agent tells you out loud instead of going silent:
@@ -130,7 +147,7 @@ You don't need to be a programmer. Set up once, then start with one step every t
 3. Open a terminal in the project folder and run:
    - Mac/Linux: `./setup.sh`
    - Windows: double-click `setup.bat`
-4. The setup walks you through creating 3 free accounts (LiveKit, AssemblyAI, Cartesia) and pastes in your keys. The AI brain itself runs on your own computer - no AI key, no AI bill.
+4. The setup asks for your API keys - **every one is optional**. Press Enter to skip any of them and that piece runs on your own computer instead, free forever. No accounts needed at all.
 
 **Starting it (every time after):**
 
@@ -144,11 +161,12 @@ Your browser opens at http://localhost:3000 - hit Start call and talk. Press Ctr
 
 You need Python 3.10+, [uv](https://astral.sh/uv), Node.js 18+, and pnpm.
 
-API keys (all have free tiers; none needed for the LLM if you self-host):
+API keys - all optional (missing ones fall back to local automatically):
 
-- **LiveKit Cloud** at https://cloud.livekit.io - project Settings → URL, API key, secret
-- **AssemblyAI** at https://www.assemblyai.com - speech to text
-- **Cartesia** at https://play.cartesia.ai - text to speech
+- **LiveKit Cloud** at https://cloud.livekit.io - project Settings → URL, API key, secret (skip = local `livekit-server`)
+- **AssemblyAI** at https://www.assemblyai.com - speech to text (skip = local Whisper)
+- **Cartesia** at https://play.cartesia.ai - text to speech (skip = local Piper)
+- **Anthropic / OpenAI / Google / Groq** - the brain (skip = local Ollama)
 
 Python agent:
 

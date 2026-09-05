@@ -1,8 +1,11 @@
 """LLM provider selection for the voice agent.
 
-The agent is provider-agnostic. Pick a provider with the LLM_PROVIDER env var:
+Default is "auto": whichever commercial API key you have gets used
+(quality order: anthropic > openai > google > groq), and with no keys at
+all the LLM runs locally via Ollama for free. Override with LLM_PROVIDER:
 
-    ollama      (default) self-hosted via Ollama, no API key needed
+    auto        (default) key present -> that provider; no keys -> ollama
+    ollama      self-hosted via Ollama, no API key needed
     openai-compatible     any self-hosted OpenAI-compatible server (vLLM,
                           llama.cpp, LM Studio, TGI, ...)
     anthropic             Claude via ANTHROPIC_API_KEY
@@ -13,9 +16,15 @@ The agent is provider-agnostic. Pick a provider with the LLM_PROVIDER env var:
 Each provider's model can be overridden with LLM_MODEL. Plugin imports are
 lazy so you only need the packages for the provider you actually use.
 """
+import logging
 import os
 
+from providers_common import has_key
+
+logger = logging.getLogger("career-agent.llm")
+
 SUPPORTED_PROVIDERS = (
+    "auto",
     "ollama",
     "openai-compatible",
     "anthropic",
@@ -24,7 +33,15 @@ SUPPORTED_PROVIDERS = (
     "groq",
 )
 
-DEFAULT_PROVIDER = "ollama"
+DEFAULT_PROVIDER = "auto"
+
+# auto mode: first provider whose key exists wins, else local
+_AUTO_ORDER = (
+    ("anthropic", "ANTHROPIC_API_KEY"),
+    ("openai", "OPENAI_API_KEY"),
+    ("google", "GOOGLE_API_KEY"),
+    ("groq", "GROQ_API_KEY"),
+)
 
 # Default model per provider, override with LLM_MODEL
 DEFAULT_MODELS = {
@@ -38,14 +55,21 @@ DEFAULT_MODELS = {
 
 
 def resolve_provider() -> str:
-    """Read and validate LLM_PROVIDER, defaulting to the self-hosted option."""
+    """Read and validate LLM_PROVIDER. In auto mode (the default), a real
+    commercial API key selects its provider; with no keys the LLM runs
+    locally via Ollama."""
     provider = os.environ.get("LLM_PROVIDER", DEFAULT_PROVIDER).strip().lower()
     if provider not in SUPPORTED_PROVIDERS:
         raise ValueError(
             f"Unknown LLM_PROVIDER '{provider}'. "
             f"Supported: {', '.join(SUPPORTED_PROVIDERS)}"
         )
-    return provider
+    if provider != "auto":
+        return provider
+    for candidate, env_var in _AUTO_ORDER:
+        if has_key(env_var):
+            return candidate
+    return "ollama"
 
 
 def resolve_model(provider: str) -> str:
@@ -61,6 +85,7 @@ def create_llm():
     """
     provider = resolve_provider()
     model = resolve_model(provider)
+    logger.info("LLM: %s (%s)", provider, model)
 
     if provider == "ollama":
         from livekit.plugins import openai as lk_openai

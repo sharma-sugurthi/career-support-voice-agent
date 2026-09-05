@@ -12,11 +12,28 @@ if not exist "livekit-voice-agent\.env.local" (
   pause & exit /b 1
 )
 
-findstr /R "^LIVEKIT_URL=wss://your-project" "livekit-voice-agent\.env.local" >nul 2>nul
-if not errorlevel 1 (
-  echo Your LiveKit keys are missing.
-  echo Open livekit-voice-agent\.env.local in Notepad and paste your keys - get them free at https://cloud.livekit.io
-  pause & exit /b 1
+REM Local LiveKit server or cloud?
+set "LOCAL_LIVEKIT="
+findstr /C:"LIVEKIT_URL=ws://localhost" "livekit-voice-agent\.env.local" >nul 2>nul
+if not errorlevel 1 set "LOCAL_LIVEKIT=1"
+
+if not defined LOCAL_LIVEKIT (
+  findstr /R "^LIVEKIT_URL=wss://your-project" "livekit-voice-agent\.env.local" >nul 2>nul
+  if not errorlevel 1 (
+    echo Your LiveKit settings are missing. Run setup.bat again - it configures a
+    echo free local server, or paste LiveKit Cloud keys in livekit-voice-agent\.env.local
+    pause & exit /b 1
+  )
+)
+
+if defined LOCAL_LIVEKIT (
+  if not exist "bin\livekit-server.exe" (
+    echo Local LiveKit server not found. Run setup.bat once - it downloads it for you.
+    pause & exit /b 1
+  )
+  echo Starting the local LiveKit server...
+  start "Career Coach - LiveKit" cmd /c "bin\livekit-server.exe --dev"
+  timeout /t 3 /nobreak >nul
 )
 
 echo Starting the voice agent...
@@ -35,5 +52,5 @@ start http://localhost:3000
 
 echo.
 echo Career Coach is running at http://localhost:3000
-echo To stop it, close the two "Career Coach" windows that opened.
+echo To stop it, close the "Career Coach" windows that opened.
 pause

@@ -63,12 +63,13 @@ class TestEnvironmentSetup:
         missing = required - env.keys()
         assert not missing, f".env.example is missing keys: {missing}"
 
-    def test_env_example_defaults_to_self_hosted(self):
-        """The out-of-the-box config must not require any LLM API key."""
+    def test_env_example_defaults_to_auto(self):
+        """The out-of-the-box config must not require any LLM API key: auto
+        mode uses keys when present and falls back to local Ollama."""
         env = _load_env_example()
-        assert env.get("LLM_PROVIDER") == "ollama", (
-            "LLM_PROVIDER in .env.example should default to the self-hosted "
-            "'ollama' provider"
+        assert env.get("LLM_PROVIDER") == "auto", (
+            "LLM_PROVIDER in .env.example should be 'auto' (keys upgrade, "
+            "no keys means local)"
         )
 
     def test_env_local_exists(self):
@@ -218,15 +219,19 @@ class TestLLMProviders:
         import llm_providers
         return llm_providers
 
-    def test_default_provider_is_self_hosted(self):
+    def test_default_with_no_keys_is_self_hosted(self):
         mod = self._module()
         with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("LLM_PROVIDER", None)
+            for var in ("LLM_PROVIDER", "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
+                        "GOOGLE_API_KEY", "GROQ_API_KEY"):
+                os.environ.pop(var, None)
             assert mod.resolve_provider() == "ollama"
 
-    def test_all_supported_providers_resolve(self):
+    def test_all_explicit_providers_resolve_to_themselves(self):
         mod = self._module()
         for provider in mod.SUPPORTED_PROVIDERS:
+            if provider == "auto":
+                continue
             with patch.dict(os.environ, {"LLM_PROVIDER": provider}):
                 assert mod.resolve_provider() == provider
 
@@ -236,9 +241,11 @@ class TestLLMProviders:
             with pytest.raises(ValueError, match="Unknown LLM_PROVIDER"):
                 mod.resolve_provider()
 
-    def test_every_provider_has_a_default_model(self):
+    def test_every_concrete_provider_has_a_default_model(self):
         mod = self._module()
         for provider in mod.SUPPORTED_PROVIDERS:
+            if provider == "auto":
+                continue
             assert mod.DEFAULT_MODELS.get(provider), (
                 f"No default model configured for provider '{provider}'"
             )

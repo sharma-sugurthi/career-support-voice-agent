@@ -56,12 +56,16 @@ echo "  Building the web app (makes daily startup fast)..."
 (cd "$WEB_DIR" && pnpm build) || fail "Web app build failed. Run ./setup.sh again; if it keeps failing, please open an issue on GitHub."
 ok "Web app ready"
 
-# ── 5. Your keys ──────────────────────────────────────────────────────────────
-bold "Step 5/6: Your service keys"
-echo "  The app needs 3 free accounts (the AI brain itself runs on YOUR computer, no key needed):"
-echo "    1. LiveKit Cloud  https://cloud.livekit.io   (connects your mic to the agent)"
-echo "    2. AssemblyAI     https://www.assemblyai.com (turns your speech into text)"
-echo "    3. Cartesia       https://play.cartesia.ai   (gives the agent its voice)"
+# ── 5. Your keys (ALL optional) ───────────────────────────────────────────────
+bold "Step 5/6: Your service keys - every one is optional"
+echo "  Have a key? Paste it and that piece uses the best commercial service."
+echo "  Don't have one? Just press Enter and that piece runs on YOUR computer,"
+echo "  free forever. You can paste keys later in livekit-voice-agent/.env.local."
+echo
+echo "    LiveKit    https://cloud.livekit.io   (mic connection; skip = local server)"
+echo "    AssemblyAI https://www.assemblyai.com (speech to text;  skip = local Whisper)"
+echo "    Cartesia   https://play.cartesia.ai   (the voice;       skip = local Piper)"
+echo "    AI keys    Anthropic/OpenAI/Google/Groq (the brain;     skip = local Ollama)"
 echo
 
 AGENT_ENV="$AGENT_DIR/.env.local"
@@ -87,32 +91,84 @@ has_real_value() {
 }
 
 ask_key() {
-  local key="$1" label="$2"
+  local key="$1" label="$2" skip_msg="$3"
   if has_real_value "$AGENT_ENV" "$key"; then
     ok "$label already set"
-    return
+    return 0
   fi
-  printf '  Paste your %s (or press Enter to add it later): ' "$label"
+  printf '  Paste your %s (or press Enter to skip): ' "$label"
   read -r value
   if [ -n "$value" ]; then
     set_key "$AGENT_ENV" "$key" "$value"
     case "$key" in LIVEKIT_*) set_key "$WEB_ENV" "$key" "$value" ;; esac
     ok "$label saved"
-  else
-    warn "$label skipped - add it to livekit-voice-agent/.env.local before starting"
+    return 0
   fi
+  ok "$label skipped - $skip_msg"
+  return 1
 }
 
-ask_key "LIVEKIT_URL"        "LiveKit URL (starts with wss://)"
-ask_key "LIVEKIT_API_KEY"    "LiveKit API key"
-ask_key "LIVEKIT_API_SECRET" "LiveKit API secret"
-ask_key "ASSEMBLYAI_API_KEY" "AssemblyAI key"
-ask_key "CARTESIA_API_KEY"   "Cartesia key"
+install_local_livekit() {
+  mkdir -p "$ROOT/bin"
+  if [ -x "$ROOT/bin/livekit-server" ]; then
+    ok "local LiveKit server already installed"
+    return 0
+  fi
+  local os arch ver
+  case "$(uname -s)" in Darwin) os="darwin" ;; *) os="linux" ;; esac
+  case "$(uname -m)" in arm64|aarch64) arch="arm64" ;; *) arch="amd64" ;; esac
+  ver="$(curl -sI https://github.com/livekit/livekit/releases/latest 2>/dev/null \
+        | tr -d '\r' | awk -F'/tag/v' 'tolower($1) ~ /^location:/ {print $2}')"
+  ver="${ver:-1.9.1}"
+  echo "  Downloading the local LiveKit server v$ver (one time)..."
+  if curl -sL "https://github.com/livekit/livekit/releases/download/v${ver}/livekit_${ver}_${os}_${arch}.tar.gz" \
+      | tar -xz -C "$ROOT/bin" livekit-server 2>/dev/null; then
+    chmod +x "$ROOT/bin/livekit-server"
+    ok "local LiveKit server installed"
+    return 0
+  fi
+  warn "Could not download the local LiveKit server. Either run ./setup.sh again,"
+  echo "     or use LiveKit Cloud (free) instead: https://cloud.livekit.io"
+  return 1
+}
+
+use_local_livekit() {
+  # --dev mode credentials of livekit-server; local use on this machine only
+  for f in "$AGENT_ENV" "$WEB_ENV"; do
+    set_key "$f" "LIVEKIT_URL" "ws://localhost:7880"
+    set_key "$f" "LIVEKIT_API_KEY" "devkey"
+    set_key "$f" "LIVEKIT_API_SECRET" "secret"
+  done
+  ok "configured for the local LiveKit server (no account needed)"
+}
+
+# LiveKit: paste cloud keys, or skip entirely for a local server
+if grep -q "^LIVEKIT_URL=ws://localhost:7880" "$AGENT_ENV" 2>/dev/null; then
+  ok "LiveKit already configured for the local server"
+  install_local_livekit || true
+elif ask_key "LIVEKIT_URL" "LiveKit URL (starts with wss://)" "using a local LiveKit server instead"; then
+  ask_key "LIVEKIT_API_KEY"    "LiveKit API key"    "add it to livekit-voice-agent/.env.local before starting" || true
+  ask_key "LIVEKIT_API_SECRET" "LiveKit API secret" "add it to livekit-voice-agent/.env.local before starting" || true
+else
+  install_local_livekit && use_local_livekit
+fi
+
+ask_key "ASSEMBLYAI_API_KEY" "AssemblyAI key" "speech recognition will run locally (Whisper)" || true
+ask_key "CARTESIA_API_KEY"   "Cartesia key"   "the voice will run locally (Piper)" || true
+ask_key "ANTHROPIC_API_KEY"  "Anthropic (Claude) key, if you have one" \
+  "the AI brain runs locally (Ollama). OPENAI_API_KEY, GOOGLE_API_KEY or GROQ_API_KEY also work, in .env.local" || true
 
 # ── 6. The AI brain (Ollama, runs on your computer) ───────────────────────────
 bold "Step 6/6: The AI brain"
 LLM_PROVIDER="$(grep '^LLM_PROVIDER=' "$AGENT_ENV" 2>/dev/null | head -1 | cut -d= -f2)"
-if [ "${LLM_PROVIDER:-ollama}" = "ollama" ]; then
+if [ -z "$LLM_PROVIDER" ] || [ "$LLM_PROVIDER" = "auto" ]; then
+  # auto mode: a commercial key means the local brain isn't needed
+  LLM_PROVIDER="ollama"
+  for k in ANTHROPIC_API_KEY OPENAI_API_KEY GOOGLE_API_KEY GROQ_API_KEY; do
+    if has_real_value "$AGENT_ENV" "$k"; then LLM_PROVIDER="cloud ($k)"; break; fi
+  done
+fi
+if [ "$LLM_PROVIDER" = "ollama" ]; then
   if command -v ollama >/dev/null 2>&1; then
     MODEL="$(grep '^LLM_MODEL=' "$AGENT_ENV" 2>/dev/null | head -1 | cut -d= -f2)"
     MODEL="${MODEL:-llama3.1:8b}"
@@ -125,7 +181,7 @@ if [ "${LLM_PROVIDER:-ollama}" = "ollama" ]; then
     echo "     (Or use a cloud AI instead: set LLM_PROVIDER in livekit-voice-agent/.env.local)"
   fi
 else
-  ok "You chose the '$LLM_PROVIDER' cloud AI - make sure its API key is in livekit-voice-agent/.env.local"
+  ok "AI brain: $LLM_PROVIDER - no local model needed"
 fi
 
 # Desktop launcher for Linux (absolute path required by .desktop format)
