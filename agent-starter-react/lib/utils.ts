@@ -1,7 +1,7 @@
 import { cache } from 'react';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { type ClassValue, clsx } from 'clsx';
 import { TokenSource } from 'livekit-client';
+import { twMerge } from 'tailwind-merge';
 import { APP_CONFIG_DEFAULTS } from '@/app-config';
 import type { AppConfig } from '@/app-config';
 

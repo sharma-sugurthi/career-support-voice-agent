@@ -31,19 +31,20 @@ export const WelcomeView = ({
   return (
     <div ref={ref}>
       <section className="bg-background flex flex-col items-center justify-center text-center">
-        <img src="/rgukt.png" alt="RGUKT Logo" className="mb-4 size-24" />
+        <WelcomeImage />
 
         <p className="text-foreground max-w-prose pt-1 leading-6 font-medium">
-  RGUKT Career Support Agent
-</p>
-
+          Career Support Voice Agent
+        </p>
+        <p className="text-muted-foreground max-w-prose pt-1 text-sm leading-6">
+          Your open-source AI career coach. Talk about resumes, interviews, job search, and career
+          switches.
+        </p>
 
         <Button variant="primary" size="lg" onClick={onStartCall} className="mt-6 w-64 font-mono">
           {startButtonText}
         </Button>
       </section>
-
-
     </div>
   );
 };

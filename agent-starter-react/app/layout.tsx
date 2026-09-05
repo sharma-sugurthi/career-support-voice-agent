@@ -65,16 +65,15 @@ export default async function RootLayout({ children }: RootLayoutProps) {
       </head>
       <body className="overflow-x-hidden">
         <ThemeProvider
-  attribute="class"
-  defaultTheme="light"   // force light mode
-  enableSystem={false}   // disable system theme detection
-  disableTransitionOnChange
->
-  {children}
+          attribute="class"
+          defaultTheme="light" // force light mode
+          enableSystem={false} // disable system theme detection
+          disableTransitionOnChange
+        >
+          {children}
 
-  {/* Remove the ThemeToggle component */}
-</ThemeProvider>
-
+          {/* Remove the ThemeToggle component */}
+        </ThemeProvider>
       </body>
     </html>
   );
