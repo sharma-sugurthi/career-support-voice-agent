@@ -71,5 +71,3 @@ logs/
 .vercel
 
 # ── Project-specific ──────────────────────────────────────────────────────────
-# Generated/downloaded assets not worth committing
-public/rgukt.png

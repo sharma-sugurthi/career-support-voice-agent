@@ -1,5 +1,5 @@
 """
-Tests for the RGUKT Career Support Voice Agent.
+Tests for the Career Support Voice Agent.
 
 These are integration-light tests - they verify the agent's structural
 correctness (imports, configuration, class hierarchy) without requiring
@@ -57,17 +57,27 @@ class TestEnvironmentSetup:
             "LIVEKIT_API_KEY",
             "LIVEKIT_API_SECRET",
             "ASSEMBLYAI_API_KEY",
-            "GROQ_API_KEY",
             "CARTESIA_API_KEY",
+            "LLM_PROVIDER",
         }
         missing = required - env.keys()
         assert not missing, f".env.example is missing keys: {missing}"
 
-    def test_env_local_exists(self):
-        """The actual secrets file must exist for the agent to run."""
-        assert (AGENT_DIR / ".env.local").exists(), (
-            ".env.local not found - copy .env.example and fill in your credentials"
+    def test_env_example_defaults_to_self_hosted(self):
+        """The out-of-the-box config must not require any LLM API key."""
+        env = _load_env_example()
+        assert env.get("LLM_PROVIDER") == "ollama", (
+            "LLM_PROVIDER in .env.example should default to the self-hosted "
+            "'ollama' provider"
         )
+
+    def test_env_local_exists(self):
+        """The actual secrets file must exist for the agent to run locally."""
+        if not (AGENT_DIR / ".env.local").exists():
+            pytest.skip(
+                ".env.local not present (fine for CI) - copy .env.example "
+                "and fill in credentials to run the agent"
+            )
 
     def test_env_local_not_committed(self):
         """.env.local must be gitignored so secrets don't leak into git."""
@@ -90,9 +100,8 @@ class TestAgentModule:
         assert (AGENT_DIR / "pyproject.toml").exists()
 
     def test_venv_exists(self):
-        assert (AGENT_DIR / ".venv").exists(), (
-            "Virtual environment not found - run: uv sync"
-        )
+        if not (AGENT_DIR / ".venv").exists():
+            pytest.skip("Virtual environment not found - run: uv sync")
 
     def test_required_packages_importable(self):
         """Core packages that must be importable before any agent starts."""
@@ -155,13 +164,17 @@ class TestAssistantClass:
             src = inspect.getsource(Assistant.__init__)
             assert "instructions" in src
 
-    def test_assistant_instructions_mention_rgukt(self):
-        """The system prompt must mention RGUKT to keep the agent on-brand."""
+    def test_assistant_instructions_are_general(self):
+        """The prompt must serve any user, not one institute."""
         Assistant = self._get_assistant_class()
         import inspect
         src = inspect.getsource(Assistant.__init__)
-        assert "RGUKT" in src, (
-            "Agent instructions don't mention RGUKT - the branding is missing"
+        assert "career" in src.lower(), (
+            "Agent instructions must describe career coaching"
+        )
+        assert "RGUKT" not in src, (
+            "Agent instructions still mention RGUKT - the project pivoted to "
+            "a general-purpose career agent"
         )
 
     def test_assistant_instructions_no_markdown(self):
@@ -201,6 +214,7 @@ class TestPyprojectIntegrity:
         deps = " ".join(data["project"].get("dependencies", []))
         required_prefixes = [
             "livekit-agents",
+            "livekit-plugins-anthropic",
             "livekit-plugins-assemblyai",
             "livekit-plugins-cartesia",
             "livekit-plugins-openai",
@@ -210,3 +224,92 @@ class TestPyprojectIntegrity:
             assert prefix in deps, (
                 f"Dependency '{prefix}' missing from pyproject.toml"
             )
+
+
+# ---------------------------------------------------------------------------
+# LLM Provider Selection
+# ---------------------------------------------------------------------------
+
+class TestLLMProviders:
+    """llm_providers.py has no import-time plugin dependencies, so these run
+    without any LiveKit plugin installed."""
+
+    def _module(self):
+        import llm_providers
+        return llm_providers
+
+    def test_default_provider_is_self_hosted(self):
+        mod = self._module()
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("LLM_PROVIDER", None)
+            assert mod.resolve_provider() == "ollama"
+
+    def test_all_supported_providers_resolve(self):
+        mod = self._module()
+        for provider in mod.SUPPORTED_PROVIDERS:
+            with patch.dict(os.environ, {"LLM_PROVIDER": provider}):
+                assert mod.resolve_provider() == provider
+
+    def test_unknown_provider_raises(self):
+        mod = self._module()
+        with patch.dict(os.environ, {"LLM_PROVIDER": "does-not-exist"}):
+            with pytest.raises(ValueError, match="Unknown LLM_PROVIDER"):
+                mod.resolve_provider()
+
+    def test_every_provider_has_a_default_model(self):
+        mod = self._module()
+        for provider in mod.SUPPORTED_PROVIDERS:
+            assert mod.DEFAULT_MODELS.get(provider), (
+                f"No default model configured for provider '{provider}'"
+            )
+
+    def test_llm_model_env_overrides_default(self):
+        mod = self._module()
+        with patch.dict(os.environ, {"LLM_MODEL": "my-custom-model"}):
+            assert mod.resolve_model("ollama") == "my-custom-model"
+
+    def test_openai_compatible_requires_base_url(self):
+        mod = self._module()
+        env = {"LLM_PROVIDER": "openai-compatible"}
+        with patch.dict(os.environ, env, clear=False):
+            os.environ.pop("LLM_BASE_URL", None)
+            with pytest.raises(ValueError, match="LLM_BASE_URL"):
+                mod.create_llm()
+
+
+class TestLLMErrorClassification:
+    """The agent must SAY when credits run out or a rate limit hits."""
+
+    def _classify(self, text):
+        import llm_providers
+        return llm_providers.classify_llm_error(Exception(text))
+
+    def test_quota_errors_detected(self):
+        samples = [
+            "Error code: 429 - insufficient_quota: You exceeded your current quota",
+            "Your credit balance is too low to access the Anthropic API",
+            "402 Payment Required",
+        ]
+        for text in samples:
+            assert self._classify(text) == "quota", f"not classified as quota: {text}"
+
+    def test_rate_limit_errors_detected(self):
+        samples = [
+            "Rate limit reached for model, please try again in 20s",
+            "429 Too Many Requests",
+            "Overloaded",
+        ]
+        for text in samples:
+            assert self._classify(text) == "rate_limit", (
+                f"not classified as rate_limit: {text}"
+            )
+
+    def test_unrelated_errors_return_none(self):
+        assert self._classify("connection reset by peer") is None
+
+    def test_spoken_messages_exist_for_all_classifications(self):
+        import llm_providers
+        assert "quota" in llm_providers.SPOKEN_ERROR_MESSAGES
+        assert "rate_limit" in llm_providers.SPOKEN_ERROR_MESSAGES
+        assert "completed" in llm_providers.SPOKEN_ERROR_MESSAGES["quota"].lower()
+        assert "wait" in llm_providers.SPOKEN_ERROR_MESSAGES["rate_limit"].lower()

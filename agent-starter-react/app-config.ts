@@ -33,18 +33,18 @@ export interface AppConfig {
 }
 
 export const APP_CONFIG_DEFAULTS: AppConfig = {
-  companyName: 'RGUKT',
-  pageTitle: 'RGUKT Career Support Agent',
-  pageDescription: 'RGUKT Career Support Agent',
+  companyName: 'Career Support Voice Agent',
+  pageTitle: 'Career Support Voice Agent',
+  pageDescription: 'An open-source, voice-first AI career coach',
 
   supportsChatInput: true,
   supportsVideoInput: true,
   supportsScreenShare: true,
   isPreConnectBufferEnabled: true,
 
-  logo: '/rgukt.png',
+  logo: '/logo.svg',
   accent: '#002cf2',
-  logoDark: '/rgukt.png',
+  logoDark: '/logo.svg',
   accentDark: '#1fd5f9',
   startButtonText: 'Start call',
 
